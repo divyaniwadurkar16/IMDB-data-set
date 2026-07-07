@@ -1,46 +1,39 @@
 import streamlit as st
-import joblib
 import re
 import nltk
-import os
+import joblib
+from pathlib import Path
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
-# -----------------------------
+# -------------------------------
 # Page Configuration
-# -----------------------------
+# -------------------------------
 st.set_page_config(
-    page_title="IMDB Sentiment Analysis",
+    page_title="IMDB Sentiment Predictor",
     page_icon="🎬",
     layout="centered"
 )
 
-# -----------------------------
-# Download NLTK Resources
-# -----------------------------
+# -------------------------------
+# Download NLTK Data
+# -------------------------------
 nltk.download("stopwords", quiet=True)
 nltk.download("wordnet", quiet=True)
 
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words("english"))
 
-# -----------------------------
-# Text Preprocessing Function
-# -----------------------------
+# -------------------------------
+# Text Preprocessing
+# -------------------------------
 def preprocess_text(text):
-    # Remove HTML tags
     text = re.sub(r"<.*?>", "", text)
-
-    # Remove punctuation, numbers, special characters
     text = re.sub(r"[^a-zA-Z]", " ", text)
-
-    # Convert to lowercase
     text = text.lower()
 
-    # Tokenization
     words = text.split()
 
-    # Remove stopwords and lemmatize
     words = [
         lemmatizer.lemmatize(word)
         for word in words
@@ -49,66 +42,56 @@ def preprocess_text(text):
 
     return " ".join(words)
 
-# -----------------------------
-# Load Model & Vectorizer
-# -----------------------------
+# -------------------------------
+# Load Model
+# -------------------------------
 @st.cache_resource
-def load_models():
-    try:
-        vectorizer = joblib.load("tfidf_vectorizer.pkl")
-        model = joblib.load("logistic_regression_model.pkl")
-        return vectorizer, model
-    except FileNotFoundError:
-        st.error("❌ Model files not found!")
+def load_model():
+    vectorizer_path = Path("tfidf_vectorizer.pkl")
+    model_path = Path("logistic_regression_model.pkl")
+
+    if not vectorizer_path.exists():
+        st.error("❌ tfidf_vectorizer.pkl not found.")
         st.stop()
 
-tfidf_vectorizer, model = load_models()
+    if not model_path.exists():
+        st.error("❌ logistic_regression_model.pkl not found.")
+        st.stop()
 
-# -----------------------------
-# App Title
-# -----------------------------
+    vectorizer = joblib.load(vectorizer_path)
+    model = joblib.load(model_path)
+
+    return vectorizer, model
+
+tfidf_vectorizer, model = load_model()
+
+# -------------------------------
+# UI
+# -------------------------------
 st.title("🎬 IMDB Movie Review Sentiment Analysis")
-st.write(
-    "Enter a movie review below and click **Predict Sentiment**."
+
+review = st.text_area(
+    "Enter your movie review:",
+    height=200
 )
 
-# -----------------------------
-# User Input
-# -----------------------------
-user_input = st.text_area(
-    "✍ Enter Movie Review",
-    height=200,
-    placeholder="Example: This movie was absolutely amazing! The acting was brilliant..."
-)
+if st.button("Predict Sentiment"):
 
-# -----------------------------
-# Prediction
-# -----------------------------
-if st.button("🔍 Predict Sentiment"):
-
-    if user_input.strip() == "":
-        st.warning("⚠ Please enter a movie review.")
+    if review.strip() == "":
+        st.warning("Please enter a review.")
     else:
 
-        with st.spinner("Analyzing sentiment..."):
+        cleaned = preprocess_text(review)
 
-            cleaned_input = preprocess_text(user_input)
+        vector = tfidf_vectorizer.transform([cleaned])
 
-            input_vector = tfidf_vectorizer.transform([cleaned_input])
+        prediction = model.predict(vector)[0]
 
-            prediction = model.predict(input_vector)[0]
-
-            # Prediction Probability
-            probability = model.predict_proba(input_vector)[0]
-
-            confidence = max(probability) * 100
+        confidence = model.predict_proba(vector).max() * 100
 
         if prediction == 1:
             st.success("😊 Positive Review")
         else:
             st.error("😞 Negative Review")
 
-        st.write(f"### Confidence: **{confidence:.2f}%**")
-
-        with st.expander("Processed Review"):
-            st.write(cleaned_input)
+        st.write(f"**Confidence:** {confidence:.2f}%")
