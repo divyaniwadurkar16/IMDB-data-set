@@ -2,58 +2,113 @@ import streamlit as st
 import joblib
 import re
 import nltk
+import os
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 
-# Download necessary NLTK data (only if not already downloaded)
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
+# -----------------------------
+# Page Configuration
+# -----------------------------
+st.set_page_config(
+    page_title="IMDB Sentiment Analysis",
+    page_icon="🎬",
+    layout="centered"
+)
+
+# -----------------------------
+# Download NLTK Resources
+# -----------------------------
+nltk.download("stopwords", quiet=True)
+nltk.download("wordnet", quiet=True)
 
 lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words('english'))
+stop_words = set(stopwords.words("english"))
 
+# -----------------------------
+# Text Preprocessing Function
+# -----------------------------
 def preprocess_text(text):
     # Remove HTML tags
-    text = re.sub(r'<.*?>', '', text)
-    # Remove non-alphabetic characters and convert to lowercase
-    text = re.sub(r'[^a-zA-Z]', ' ', text).lower()
-    # Tokenize words
+    text = re.sub(r"<.*?>", "", text)
+
+    # Remove punctuation, numbers, special characters
+    text = re.sub(r"[^a-zA-Z]", " ", text)
+
+    # Convert to lowercase
+    text = text.lower()
+
+    # Tokenization
     words = text.split()
+
     # Remove stopwords and lemmatize
-    words = [lemmatizer.lemmatize(word) for word in words if word not in stop_words]
-    return ' '.join(words)
+    words = [
+        lemmatizer.lemmatize(word)
+        for word in words
+        if word not in stop_words
+    ]
 
-# Load the TF-IDF vectorizer and the trained model
-tfidf_vectorizer = joblib.load('tfidf_vectorizer.pkl')
-model = joblib.load('logistic_regression_model.pkl')
+    return " ".join(words)
 
-# Streamlit App Title
-st.title("IMDB Movie Review Sentiment Predictor")
-st.write("Enter a movie review below to predict its sentiment (Positive/Negative).")
+# -----------------------------
+# Load Model & Vectorizer
+# -----------------------------
+@st.cache_resource
+def load_models():
+    try:
+        vectorizer = joblib.load("tfidf_vectorizer.pkl")
+        model = joblib.load("logistic_regression_model.pkl")
+        return vectorizer, model
+    except FileNotFoundError:
+        st.error("❌ Model files not found!")
+        st.stop()
 
-# Text input from user
-user_input = st.text_area("Enter your review here:", height=200)
+tfidf_vectorizer, model = load_models()
 
-if st.button("Predict Sentiment"):
-    if user_input:
-        # Preprocess the input text
-        cleaned_input = preprocess_text(user_input)
-        
-        # Transform text using the loaded TF-IDF vectorizer
-        # Ensure the vectorizer expects a list of documents
-        input_vectorized = tfidf_vectorizer.transform([cleaned_input])
-        
-        # Make prediction
-        prediction = model.predict(input_vectorized)
-        
-        # Display result
-        sentiment = "Positive" if prediction[0] == 1 else "Negative"
-        st.success(f"The sentiment of the review is: **{sentiment}**")
+# -----------------------------
+# App Title
+# -----------------------------
+st.title("🎬 IMDB Movie Review Sentiment Analysis")
+st.write(
+    "Enter a movie review below and click **Predict Sentiment**."
+)
+
+# -----------------------------
+# User Input
+# -----------------------------
+user_input = st.text_area(
+    "✍ Enter Movie Review",
+    height=200,
+    placeholder="Example: This movie was absolutely amazing! The acting was brilliant..."
+)
+
+# -----------------------------
+# Prediction
+# -----------------------------
+if st.button("🔍 Predict Sentiment"):
+
+    if user_input.strip() == "":
+        st.warning("⚠ Please enter a movie review.")
     else:
-        st.warning("Please enter a review to predict sentiment.")
+
+        with st.spinner("Analyzing sentiment..."):
+
+            cleaned_input = preprocess_text(user_input)
+
+            input_vector = tfidf_vectorizer.transform([cleaned_input])
+
+            prediction = model.predict(input_vector)[0]
+
+            # Prediction Probability
+            probability = model.predict_proba(input_vector)[0]
+
+            confidence = max(probability) * 100
+
+        if prediction == 1:
+            st.success("😊 Positive Review")
+        else:
+            st.error("😞 Negative Review")
+
+        st.write(f"### Confidence: **{confidence:.2f}%**")
+
+        with st.expander("Processed Review"):
+            st.write(cleaned_input)
