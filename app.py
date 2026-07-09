@@ -48,7 +48,7 @@ def preprocess_text(text):
 @st.cache_resource
 def load_model():
     vectorizer_path = Path("tfidf_vectorizer.pkl")
-    model_path = Path("logistic_regression_model.pkl")
+    model_path = Path("logistic_regression_model(1).pkl")
 
     if not vectorizer_path.exists():
         st.error("❌ tfidf_vectorizer.pkl not found.")
